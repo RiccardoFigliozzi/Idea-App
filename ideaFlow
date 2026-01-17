@@ -1,0 +1,458 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Plus, 
+  Lightbulb, 
+  TrendingUp, 
+  Trash2, 
+  BrainCircuit, 
+  ChevronRight, 
+  LayoutDashboard, 
+  Target, 
+  AlertTriangle, 
+  Rocket,
+  Search,
+  CheckCircle2,
+  BarChart3
+} from 'lucide-react';
+
+// --- Configurazione API ---
+const apiKey = ""; // Gestito dall'ambiente
+
+export default function App() {
+  const [ideas, setIdeas] = useState([]);
+  const [activeTab, setActiveTab] = useState('dashboard'); // dashboard, new, list, analysis
+  const [selectedIdea, setSelectedIdea] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // --- Stato per Nuova Idea ---
+  const [newIdea, setNewIdea] = useState({
+    title: '',
+    description: '',
+    problem: '',
+    solution: '',
+    target: '',
+    impact: 5,
+    confidence: 5,
+    ease: 5,
+    status: 'draft',
+    aiAnalysis: null
+  });
+
+  // --- Logica Calcolo Score ---
+  const calculateICEScore = (i, c, e) => ((i * c * e) / 10).toFixed(1);
+
+  // --- Funzioni Principali ---
+  const handleAddIdea = () => {
+    if (!newIdea.title) return;
+    const ideaToAdd = {
+      ...newIdea,
+      id: Date.now(),
+      createdAt: new Date().toLocaleDateString('it-IT'),
+      score: calculateICEScore(newIdea.impact, newIdea.confidence, newIdea.ease)
+    };
+    setIdeas([ideaToAdd, ...ideas]);
+    setNewIdea({
+      title: '', description: '', problem: '', solution: '', target: '',
+      impact: 5, confidence: 5, ease: 5, status: 'draft', aiAnalysis: null
+    });
+    setActiveTab('list');
+  };
+
+  const deleteIdea = (id) => {
+    setIdeas(ideas.filter(i => i.id !== id));
+  };
+
+  const runAIAnalysis = async (idea) => {
+    setLoading(true);
+    const prompt = `Analizza questa idea imprenditoriale: 
+      Titolo: ${idea.title}
+      Descrizione: ${idea.description}
+      Problema: ${idea.problem}
+      Soluzione: ${idea.solution}
+      Target: ${idea.target}
+      
+      Fornisci una risposta in formato JSON con questi campi:
+      1. marketTrends: breve analisi dei trend attuali.
+      2. competitors: 3 potenziali competitor o categorie di competitor.
+      3. risks: i 3 rischi principali (Test del Cimitero).
+      4. namingSuggestions: 3 nomi creativi per il brand.
+      5. nextSteps: le prime 3 azioni concrete da fare subito.`;
+
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
+
+      const data = await response.json();
+      const analysis = JSON.parse(data.candidates[0].content.parts[0].text);
+      
+      setIdeas(ideas.map(i => i.id === idea.id ? { ...i, aiAnalysis: analysis } : i));
+      if (selectedIdea?.id === idea.id) {
+        setSelectedIdea({ ...selectedIdea, aiAnalysis: analysis });
+      }
+    } catch (error) {
+      console.error("AI Analysis failed", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Componenti UI ---
+  const SidebarItem = ({ icon: Icon, label, value, active }) => (
+    <button 
+      onClick={() => setActiveTab(value)}
+      className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg transition-all ${
+        active ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-600 hover:bg-indigo-50 hover:text-indigo-600'
+      }`}
+    >
+      <Icon size={20} />
+      <span className="font-medium">{label}</span>
+    </button>
+  );
+
+  return (
+    <div className="flex h-screen bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      {/* Sidebar */}
+      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} bg-white border-r border-slate-200 flex flex-col transition-all duration-300`}>
+        <div className="p-6 flex items-center space-x-3">
+          <div className="bg-indigo-600 p-2 rounded-xl">
+            <Rocket className="text-white" size={24} />
+          </div>
+          {isSidebarOpen && <h1 className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600">IdeaFlow</h1>}
+        </div>
+
+        <nav className="flex-1 px-4 space-y-2 mt-4">
+          <SidebarItem icon={LayoutDashboard} label="Dashboard" value="dashboard" active={activeTab === 'dashboard'} />
+          <SidebarItem icon={Plus} label="Nuova Idea" value="new" active={activeTab === 'new'} />
+          <SidebarItem icon={Lightbulb} label="Le mie Idee" value="list" active={activeTab === 'list'} />
+        </nav>
+
+        <div className="p-4 border-t border-slate-100">
+          <div className="bg-slate-50 p-4 rounded-xl">
+            <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-2">Statistiche</p>
+            <div className="flex justify-between items-end">
+              <div>
+                <p className="text-2xl font-bold text-slate-800">{ideas.length}</p>
+                <p className="text-xs text-slate-500 font-medium">Idee totali</p>
+              </div>
+              <BarChart3 className="text-indigo-400" size={20} />
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Header */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
+          <div className="flex items-center space-x-4">
+            <h2 className="text-lg font-semibold text-slate-800 capitalize">{activeTab.replace('dashboard', 'Panoramica')}</h2>
+          </div>
+          {loading && (
+            <div className="flex items-center space-x-2 text-indigo-600 animate-pulse">
+              <BrainCircuit size={18} />
+              <span className="text-sm font-medium">L'AI Co-Founder sta elaborando...</span>
+            </div>
+          )}
+        </header>
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-y-auto p-8">
+          
+          {/* DASHBOARD */}
+          {activeTab === 'dashboard' && (
+            <div className="max-w-6xl mx-auto space-y-8">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                  <div className="flex items-center space-x-3 text-indigo-600 mb-4">
+                    <TrendingUp size={24} />
+                    <h3 className="font-bold">Priorità Massima</h3>
+                  </div>
+                  {ideas.length > 0 ? (
+                    <div>
+                      <p className="text-xl font-bold mb-1">{[...ideas].sort((a,b) => b.score - a.score)[0].title}</p>
+                      <p className="text-sm text-slate-500">Punteggio ICE: {[...ideas].sort((a,b) => b.score - a.score)[0].score}</p>
+                    </div>
+                  ) : <p className="text-slate-400 italic">Nessuna idea inserita</p>}
+                </div>
+                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 rounded-2xl shadow-lg text-white">
+                  <h3 className="font-bold opacity-80 mb-2">Benvenuto in IdeaFlow</h3>
+                  <p className="text-sm mb-4">"Un'idea senza esecuzione è solo un'allucinazione." Inizia validando la tua prossima visione.</p>
+                  <button onClick={() => setActiveTab('new')} className="bg-white/20 hover:bg-white/30 px-4 py-2 rounded-lg text-sm font-bold transition-all">
+                    Inizia ora
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center">
+                  <h3 className="font-bold text-slate-800">Idee Recenti</h3>
+                  <button onClick={() => setActiveTab('list')} className="text-indigo-600 text-sm font-bold hover:underline">Vedi tutte</button>
+                </div>
+                <div className="divide-y divide-slate-50">
+                  {ideas.slice(0, 3).map(idea => (
+                    <div key={idea.id} className="p-6 hover:bg-slate-50 transition-colors flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600">
+                          <Lightbulb size={24} />
+                        </div>
+                        <div>
+                          <h4 className="font-bold">{idea.title}</h4>
+                          <p className="text-sm text-slate-500">{idea.createdAt}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-6">
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-slate-400 uppercase">ICE Score</p>
+                          <p className="text-lg font-bold text-indigo-600">{idea.score}</p>
+                        </div>
+                        <ChevronRight className="text-slate-300" />
+                      </div>
+                    </div>
+                  ))}
+                  {ideas.length === 0 && <div className="p-12 text-center text-slate-400">Nessuna idea recente. Clicca su "Nuova Idea" per cominciare.</div>}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* NUOVA IDEA */}
+          {activeTab === 'new' && (
+            <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+              <div className="bg-indigo-600 px-8 py-10 text-white">
+                <h2 className="text-2xl font-bold mb-2">Cattura l'Inspirazione</h2>
+                <p className="opacity-80">Compila i campi per strutturare la tua visione imprenditoriale.</p>
+              </div>
+              <div className="p-8 space-y-6">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2">Titolo dell'Idea</label>
+                  <input 
+                    type="text" 
+                    placeholder="E.g. Uber per i Dog Sitter"
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all outline-none text-lg"
+                    value={newIdea.title}
+                    onChange={(e) => setNewIdea({...newIdea, title: e.target.value})}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center space-x-2">
+                      <Target size={16} /> <span>Il Problema</span>
+                    </label>
+                    <textarea 
+                      rows="3"
+                      placeholder="Quale dolore risolvi?"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                      value={newIdea.problem}
+                      onChange={(e) => setNewIdea({...newIdea, problem: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 flex items-center space-x-2">
+                      <Rocket size={16} /> <span>La Soluzione</span>
+                    </label>
+                    <textarea 
+                      rows="3"
+                      placeholder="Come lo risolvi?"
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none resize-none"
+                      value={newIdea.solution}
+                      onChange={(e) => setNewIdea({...newIdea, solution: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                {/* ICE SCORING */}
+                <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100">
+                  <h3 className="font-bold text-slate-800 mb-4 flex items-center space-x-2">
+                    <TrendingUp size={18} className="text-indigo-600" />
+                    <span>ICE Scoring (Valore da 1 a 10)</span>
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div>
+                      <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                        <span>IMPATTO</span>
+                        <span>{newIdea.impact}</span>
+                      </div>
+                      <input type="range" min="1" max="10" className="w-full accent-indigo-600" value={newIdea.impact} onChange={e => setNewIdea({...newIdea, impact: parseInt(e.target.value)})} />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                        <span>CONFIDENCE</span>
+                        <span>{newIdea.confidence}</span>
+                      </div>
+                      <input type="range" min="1" max="10" className="w-full accent-indigo-600" value={newIdea.confidence} onChange={e => setNewIdea({...newIdea, confidence: parseInt(e.target.value)})} />
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                        <span>EASE (Semplicità)</span>
+                        <span>{newIdea.ease}</span>
+                      </div>
+                      <input type="range" min="1" max="10" className="w-full accent-indigo-600" value={newIdea.ease} onChange={e => setNewIdea({...newIdea, ease: parseInt(e.target.value)})} />
+                    </div>
+                  </div>
+                  <div className="mt-4 text-center">
+                    <span className="text-xs font-bold text-slate-400">SCORE PREVISTO: </span>
+                    <span className="text-xl font-black text-indigo-600">{calculateICEScore(newIdea.impact, newIdea.confidence, newIdea.ease)}</span>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-4">
+                  <button 
+                    onClick={handleAddIdea}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-xl transition-all flex items-center space-x-2 shadow-lg shadow-indigo-200"
+                  >
+                    <Plus size={20} />
+                    <span>Salva Idea</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* LISTA IDEE */}
+          {activeTab === 'list' && (
+            <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-8">
+              {/* Sidebar Lista */}
+              <div className="w-full md:w-1/3 space-y-4">
+                <div className="relative mb-6">
+                  <Search className="absolute left-4 top-3 text-slate-400" size={18} />
+                  <input placeholder="Cerca idee..." className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+                </div>
+                {ideas.map(idea => (
+                  <div 
+                    key={idea.id} 
+                    onClick={() => setSelectedIdea(idea)}
+                    className={`p-4 rounded-xl cursor-pointer transition-all border ${
+                      selectedIdea?.id === idea.id ? 'bg-white border-indigo-500 shadow-md ring-1 ring-indigo-500' : 'bg-white border-slate-100 hover:border-indigo-200'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <h4 className="font-bold text-slate-800 line-clamp-1">{idea.title}</h4>
+                      <span className="bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded text-[10px] font-black">{idea.score}</span>
+                    </div>
+                    <p className="text-xs text-slate-500">{idea.createdAt}</p>
+                  </div>
+                ))}
+                {ideas.length === 0 && <p className="text-center text-slate-400 py-10">Nessuna idea salvata.</p>}
+              </div>
+
+              {/* Dettaglio Idea */}
+              <div className="flex-1 bg-white rounded-2xl shadow-sm border border-slate-100 p-8 min-h-[600px]">
+                {selectedIdea ? (
+                  <div className="space-y-8 animate-in fade-in duration-300">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h2 className="text-3xl font-black text-slate-900 mb-2">{selectedIdea.title}</h2>
+                        <div className="flex space-x-2">
+                          <span className="bg-emerald-50 text-emerald-600 px-3 py-1 rounded-full text-xs font-bold border border-emerald-100">Validazione ICE: {selectedIdea.score}</span>
+                        </div>
+                      </div>
+                      <div className="flex space-x-2">
+                        <button 
+                          onClick={() => runAIAnalysis(selectedIdea)}
+                          disabled={loading}
+                          className="flex items-center space-x-2 bg-indigo-50 text-indigo-600 px-4 py-2 rounded-lg font-bold hover:bg-indigo-100 transition-all disabled:opacity-50"
+                        >
+                          <BrainCircuit size={18} />
+                          <span>AI Co-Founder</span>
+                        </button>
+                        <button onClick={() => deleteIdea(selectedIdea.id)} className="p-2 text-slate-400 hover:text-red-600 transition-colors">
+                          <Trash2 size={20} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <section>
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-3">Problema</h3>
+                        <p className="text-slate-700 leading-relaxed">{selectedIdea.problem || 'Non specificato'}</p>
+                      </section>
+                      <section>
+                        <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-3">Soluzione</h3>
+                        <p className="text-slate-700 leading-relaxed">{selectedIdea.solution || 'Non specificato'}</p>
+                      </section>
+                    </div>
+
+                    {/* AI ANALYSIS RESULTS */}
+                    {selectedIdea.aiAnalysis ? (
+                      <div className="bg-indigo-50/50 rounded-2xl p-6 border border-indigo-100 space-y-6">
+                        <div className="flex items-center space-x-2 text-indigo-600 mb-2">
+                          <BrainCircuit size={20} />
+                          <h3 className="font-black uppercase tracking-widest text-sm">Analisi AI Pro</h3>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <h4 className="font-bold text-indigo-900 text-sm mb-2 flex items-center space-x-2">
+                              <AlertTriangle size={14} className="text-amber-500" /> <span>Test del Cimitero (Rischi)</span>
+                            </h4>
+                            <ul className="space-y-1">
+                              {selectedIdea.aiAnalysis.risks.map((risk, i) => (
+                                <li key={i} className="text-sm text-slate-600 flex items-start space-x-2">
+                                  <span className="text-indigo-400 mt-1">•</span> <span>{risk}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-indigo-900 text-sm mb-2 flex items-center space-x-2">
+                              <CheckCircle2 size={14} className="text-emerald-500" /> <span>Prossimi Passi (Esecuzione)</span>
+                            </h4>
+                            <ul className="space-y-1">
+                              {selectedIdea.aiAnalysis.nextSteps.map((step, i) => (
+                                <li key={i} className="text-sm text-slate-600 flex items-start space-x-2">
+                                  <span className="text-indigo-400 font-bold">{i+1}.</span> <span>{step}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        </div>
+
+                        <div className="pt-4 border-t border-indigo-100">
+                          <h4 className="font-bold text-indigo-900 text-sm mb-2">💡 Naming Suggestions</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {selectedIdea.aiAnalysis.namingSuggestions.map((name, i) => (
+                              <span key={i} className="bg-white px-3 py-1 rounded-full text-xs font-bold text-indigo-600 shadow-sm border border-indigo-100">
+                                {name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-50 rounded-2xl p-12 text-center border border-dashed border-slate-200">
+                        <BrainCircuit size={40} className="mx-auto text-slate-300 mb-4" />
+                        <h3 className="font-bold text-slate-400">Analisi AI non ancora avviata</h3>
+                        <p className="text-sm text-slate-400 mb-6">Usa l'AI Co-Founder per scoprire rischi, competitor e prossimi passi.</p>
+                        <button 
+                          onClick={() => runAIAnalysis(selectedIdea)}
+                          disabled={loading}
+                          className="bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-50 px-6 py-2 rounded-full font-bold transition-all disabled:opacity-50"
+                        >
+                          {loading ? 'Elaborazione...' : 'Analizza ora'}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-300">
+                    <Lightbulb size={64} className="mb-4 opacity-20" />
+                    <p className="text-lg font-medium">Seleziona un'idea per vederne i dettagli</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+        </div>
+      </main>
+    </div>
+  );
+}
